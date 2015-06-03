@@ -11,6 +11,7 @@ import org.ggp.base.player.event.PlayerReceivedMessageEvent;
 import org.ggp.base.player.event.PlayerSentMessageEvent;
 import org.ggp.base.player.gamer.Gamer;
 import org.ggp.base.player.gamer.statemachine.random.RandomGamer;
+import org.ggp.base.player.gamer.statemachine.sample.MyMCTSGamer;
 import org.ggp.base.player.request.factory.RequestFactory;
 import org.ggp.base.player.request.grammar.Request;
 import org.ggp.base.util.http.HttpReader;
@@ -118,7 +119,7 @@ public final class GamePlayer extends Thread implements Subject
 		}
 
 		try {
-			GamePlayer player = new GamePlayer(Integer.valueOf(args[0]), new RandomGamer());
+			GamePlayer player = new GamePlayer(Integer.valueOf(args[0]), new MyMCTSGamer());
 			player.run();
 		} catch (NumberFormatException e) {
 			System.err.println("Illegal port number: " + args[0]);

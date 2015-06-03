@@ -1,0 +1,516 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; FantasiaSLG
+;;;	幻想战棋
+;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 玩家定义
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(role light)
+(role dark)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 状态基
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(<= (base (alive ?p ?c)) (character ?p ?c))
+(<= (base (dead ?p ?c)) (character ?p ?c))
+(<= (base (pos ?p ?c ?x ?y)) (character ?p ?c) (x ?x) (y ?y))
+(<= (base (hp ?p ?c ?n)) (character ?p ?c) (inGameNumber ?n))
+(<= (base (sp ?p ?c ?n)) (character ?p ?c) (inGameNumber ?n))
+(<= (base (charCount ?p 3)) (role ?p))
+(<= (base (charCount ?p 2)) (role ?p))
+(<= (base (charCount ?p 1)) (role ?p))
+(<= (base (charCount ?p 0)) (role ?p))
+(<= (base (turnID ?n)) (number ?n))
+
+; 用于展示
+(<= (base (lastCast ?p ?c ?s) (character ?p ?c) (skillDefinition ?s ?dummy1 ?dummy2 ?dummy3 ?dummy4)))
+(<= (base (lastHurt ?p ?c) (character ?p ?c)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 玩家输入
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; 移动（下回合生效）
+(<= (input ?p (move ?c ?x ?y)) (character ?p ?c) (x ?x) (y ?y))
+
+; 施放技能（本回合生效）
+(<= (input ?p (castAt ?c ?s ?x ?y)) (character ?p ?c) (x ?x) (y ?y) (skillDefinition ?s ?dummy1 single ?dummy2 ?dummy3))
+(<= (input ?p (cast ?c ?s)) (character ?p ?c) (skillDefinition ?s ?dummy1 multiple ?dummy2 ?dummy3))
+(<= (input ?p noop) (role ?p))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 合法输入定义
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(<= (legal ?p noop)
+    (role ?p))
+(<= (legal ?p (move ?c ?x ?y))
+    (true (alive ?p ?c))
+    (x ?x) (y ?y)
+    (true (pos ?p ?c ?x0 ?y0))
+    (absSubtract ?x ?x0 1)
+    (absSubtract ?y ?y0 1))
+(<= (legal ?p (castAt ?c ?s ?x ?y))
+    (true (alive ?p ?c))
+    (distinct ?p ?enemy)
+    (true (pos ?enemy ?dummy1 ?x ?y))
+    (hasSkill ?c ?s)
+    (true (pos ?p ?c ?x0 ?y0))
+    (skillDefinition ?s ?cost single ?radius ?dummy2)
+    (absSubtract ?x ?x0 ?dx)
+    (absSubtract ?y ?y0 ?dy)
+    (add ?dx ?dy ?dist)
+    (le ?dist ?radius)
+    (true (sp ?p ?c ?n))
+    (le ?cost ?n))
+(<= (legal ?p (cast ?c ?s))
+    (true (alive ?p ?c))
+    (hasSkill ?c ?s)
+    (skillDefinition ?s ?cost multiple ?dummy1 ?dummy2)
+    (true (sp ?p ?c ?n))
+    (le ?cost ?n))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 推导下一状态
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(<= (next (alive ?p ?c)) (_alive ?p ?c))
+(<= (next (dead ?p ?c)) (_dead ?p ?c))
+
+; 位置变化（注意本回合的攻击范围计算【不】使用这个位置）
+(<= (next (pos ?p ?c ?x ?y))
+    (does ?p (move ?c ?x ?y)))
+(<= (next (pos ?p ?c ?x ?y))
+    (does ?p (move ?c0 ?dummy1 ?dummy2))
+    (true (pos ?p ?c ?x ?y))
+    (distinct ?c ?c0))
+(<= (next (pos ?p ?c ?x ?y))
+    (true (pos ?p ?c ?x ?y))
+    (does ?p noop))
+(<= (next (pos ?p ?c ?x ?y))
+    (true (pos ?p ?c ?x ?y))
+    (does ?p (castAt ?dummy1 ?dummy2 ?dummy3 ?dummy4)))
+(<= (next (pos ?p ?c ?x ?y))
+    (true (pos ?p ?c ?x ?y))
+    (does ?p (cast ?dummy1 ?dummy2)))
+
+(<= (next (hp ?p ?c ?n)) (_hp ?p ?c ?n))
+(<= (next (sp ?p ?c ?n)) (_sp ?p ?c ?n))
+(<= (next (charCount ?p ?n)) (_charCount ?p ?n))
+(<= (next (turnID ?n)) (true (turnID ?n0)) (add ?n0 1 ?n))
+
+; 展示用
+(<= (next (lastCast ?p ?c ?s)) (does ?p (cast ?c ?s)))
+(<= (next (lastCast ?p ?c ?s)) (does ?p (castAt ?c ?s ?dummy1 ?dummy2)))
+(<= (next (lastHurt ?p ?c)) (_hp ?p ?c ?n) (true (hp ?p ?c ?n0)) (distinct ?n ?n0))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 终局定义
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(<= terminal
+    (true (turnID 49)))
+(<= terminal
+    (true (charCount ?p 0)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 得分定义
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(<= (goal ?p ?n)
+    (true (charCount ?p ?n)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 中间推导
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; HP变化
+
+; 第一类：不变
+
+; 1.1 对手不干事或纯移动
+(<= (_hp ?p ?c ?n)
+    (true (alive ?p ?c))
+    (distinct ?p ?enemy)
+    (does ?enemy noop)
+    (true (hp ?p ?c ?n)))
+(<= (_hp ?p ?c ?n)
+    (true (alive ?p ?c))
+    (distinct ?p ?enemy)
+    (does ?enemy (move ?dummy1 ?dummy2 ?dummy3))
+    (true (hp ?p ?c ?n)))
+
+; 1.2 对手发动技能但是没打到该角色
+(<= (_hp ?p ?c ?n)
+    (true (alive ?p ?c))
+    (distinct ?p ?enemy)
+    (does ?enemy (cast ?enemyc ?s))
+    (true (pos ?enemy ?enemyc ?x0 ?y0))
+    (true (pos ?p ?c ?x ?y))
+    (skillDefinition ?s ?dummy1 multiple ?radius ?dummy2)
+    (absSubtract ?x ?x0 ?dx)
+    (absSubtract ?y ?y0 ?dy)
+    (add ?dx ?dy ?dist)
+    (less ?radius ?dist)
+    (true (hp ?p ?c ?n)))
+(<= (_hp ?p ?c ?n)
+    (true (alive ?p ?c))
+    (distinct ?p ?enemy)
+    (does ?enemy (castAt ?dummy1 ?dummy2 ?x0 ?y0))
+    (true (pos ?p ?c ?x ?y))
+    (distinct ?x0 ?x)
+    (true (hp ?p ?c ?n)))
+(<= (_hp ?p ?c ?n)
+    (true (alive ?p ?c))
+    (distinct ?p ?enemy)
+    (does ?enemy (castAt ?dummy1 ?dummy2 ?x0 ?y0))
+    (true (pos ?p ?c ?x ?y))
+    (distinct ?y0 ?y)
+    (true (hp ?p ?c ?n)))
+
+; 第二类：变化
+
+; 2.1 范围技能：生/死
+(<= (_hp ?p ?c ?n)
+    (true (alive ?p ?c))
+    (distinct ?p ?enemy)
+    (does ?enemy (cast ?enemyc ?s))
+    (true (pos ?enemy ?enemyc ?x0 ?y0))
+    (true (pos ?p ?c ?x ?y))
+    (skillDefinition ?s ?dummy1 multiple ?radius ?damage)
+    (absSubtract ?x ?x0 ?dx)
+    (absSubtract ?y ?y0 ?dy)
+    (add ?dx ?dy ?dist)
+    (le ?dist ?radius)
+    (subtract ?n0 ?damage ?n)
+    (true (hp ?p ?c ?n0)))
+(<= (_hp ?p ?c 0)
+    (true (alive ?p ?c))
+    (distinct ?p ?enemy)
+    (does ?enemy (cast ?enemyc ?s))
+    (true (pos ?enemy ?enemyc ?x0 ?y0))
+    (true (pos ?p ?c ?x ?y))
+    (skillDefinition ?s ?dummy1 multiple ?radius ?damage)
+    (absSubtract ?x ?x0 ?dx)
+    (absSubtract ?y ?y0 ?dy)
+    (add ?dx ?dy ?dist)
+    (le ?dist ?radius)
+    (less ?n0 ?damage)
+    (true (hp ?p ?c ?n0)))
+
+; 2.2 单体技能：生/死
+(<= (_hp ?p ?c ?n)
+    (true (alive ?p ?c))
+    (distinct ?p ?enemy)
+    (does ?enemy (castAt ?dummy1 ?s ?x ?y))
+    (true (pos ?p ?c ?x ?y))
+    (skillDefinition ?s ?dummy2 single ?radius ?damage)
+    (subtract ?n0 ?damage ?n)
+    (true (hp ?p ?c ?n0)))
+(<= (_hp ?p ?c 0)
+    (true (alive ?p ?c))
+    (distinct ?p ?enemy)
+    (does ?enemy (castAt ?dummy1 ?s ?x ?y))
+    (true (pos ?p ?c ?x ?y))
+    (skillDefinition ?s ?dummy2 single ?radius ?damage)
+    (less ?n0 ?damage)
+    (true (hp ?p ?c ?n0)))
+
+; 死去角色计数
+(<= (_alive ?p ?c)
+    (_hp ?p ?c ?n)
+    (distinct ?n 0))
+
+(<= (_dead ?p ?c)
+    (_hp ?p ?c 0))
+(<= (_dead ?p ?c)
+    (true (dead ?p ?c)))
+
+(<= (countAlive ?p ?current ?num)
+    (nextChar ?last ?current)
+    (_dead ?p ?current)
+    (countAlive ?p ?last ?num))
+
+(<= (countAlive ?p ?current 0)
+    (nextChar BEGIN ?current)
+    (_dead ?p ?current))
+
+(<= (countAlive ?p ?current ?num)
+    (nextChar ?last ?current)
+    (_alive ?p ?current)
+    (countAlive ?p ?last ?num0)
+    (add ?num0 1 ?num))
+
+(<= (countAlive ?p ?current 1)
+    (nextChar BEGIN ?current)
+    (_alive ?p ?current))
+
+(<= (_charCount ?p ?num)
+    (nextChar ?current END)
+    (countAlive ?p ?current ?num))
+    
+; SP变化
+
+; 第一类：不变
+
+; 1.1 己方不干事或纯移动
+(<= (_sp ?p ?c ?n)
+    (true (alive ?p ?c))
+    (does ?p noop)
+    (true (sp ?p ?c ?n)))
+(<= (_sp ?p ?c ?n)
+    (true (alive ?p ?c))
+    (does ?p (move ?dummy1 ?dummy2 ?dummy3))
+    (true (sp ?p ?c ?n)))
+
+; 1.2 己方发动技能但不是该角色
+(<= (_sp ?p ?c ?n)
+    (true (alive ?p ?c))
+    (does ?p (cast ?c0 ?dummy1))
+    (distinct ?c ?c0)
+    (true (sp ?p ?c ?n)))
+(<= (_sp ?p ?c ?n)
+    (true (alive ?p ?c))
+    (does ?p (castAt ?c0 ?dummy1 ?dummy2 ?dummy3))
+    (distinct ?c ?c0)
+    (true (sp ?p ?c ?n)))
+
+; 第二类：变化
+(<= (_sp ?p ?c ?n)
+    (true (alive ?p ?c))
+    (does ?p (cast ?c ?s))
+    (skillDefinition ?s ?cost multiple ?dummy1 ?dummy2)
+    (subtract ?n0 ?cost ?n)
+    (true (sp ?p ?c ?n0)))
+(<= (_sp ?p ?c ?n)
+    (true (alive ?p ?c))
+    (does ?p (castAt ?c ?s ?dummy1 ?dummy2))
+    (skillDefinition ?s ?cost single ?dummy3 ?dummy4)
+    (subtract ?n0 ?cost ?n)
+    (true (sp ?p ?c ?n0)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 角色类型定义
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(character light paladin)
+(character light wizard)
+(character light archer)
+(character dark paladin)
+(character dark wizard)
+(character dark archer)
+
+; alive 失去定义表示角色死亡
+(init (alive light paladin))
+(init (alive light wizard))
+(init (alive light archer))
+(init (alive dark paladin))
+(init (alive dark wizard))
+(init (alive dark archer))
+(init (charCount light 3))
+(init (charCount dark 3))
+
+(init (turnID 0))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 角色初始数值
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(init (hp light paladin 24))
+(init (hp light wizard 15))
+(init (hp light archer 12))
+(init (hp dark paladin 24))
+(init (hp dark wizard 15))
+(init (hp dark archer 12))
+(init (sp light paladin 0))
+(init (sp light wizard 20))
+(init (sp light archer 12))
+(init (sp dark paladin 0))
+(init (sp dark wizard 20))
+(init (sp dark archer 12))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 角色初始位置
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; pos 玩家 角色 x y
+(init (pos light paladin 1 1))
+(init (pos light wizard 1 1))
+(init (pos light archer 1 1))
+(init (pos dark paladin 6 6))
+(init (pos dark wizard 6 6))
+(init (pos dark archer 6 6))
+
+(nextChar BEGIN paladin)
+(nextChar paladin wizard)
+(nextChar wizard archer)
+(nextChar archer END)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 角色技能定义
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; skillDefinition 技能 消耗 范围 半径 伤害
+(skillDefinition SwordAttack 0 single 2 2)
+(skillDefinition BowAttack 0 single 5 1)
+(skillDefinition FengJuanCanYun 3 multiple 5 2)
+(skillDefinition LeiDongJiuTian 5 multiple 3 4)
+(skillDefinition LuoXingShi 3 multiple 4 3)
+
+(hasSkill paladin SwordAttack)
+(hasSkill wizard FengJuanCanYun)
+(hasSkill wizard LeiDongJiuTian)
+(hasSkill archer LuoXingShi)
+(hasSkill archer BowAttack)
+    
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 平凡的定义：数学运算、坐标等
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(x 1) (x 2) (x 3) (x 4) (x 5) (x 6)
+(y 1) (y 2) (y 3) (y 4) (y 5) (y 6)
+
+(inGameNumber 0)
+(inGameNumber 1)
+(inGameNumber 2)
+(inGameNumber 3)
+(inGameNumber 4)
+(inGameNumber 5)
+(inGameNumber 6)
+(inGameNumber 7)
+(inGameNumber 8)
+(inGameNumber 9)
+(inGameNumber 10)
+(inGameNumber 11)
+(inGameNumber 12)
+(inGameNumber 13)
+(inGameNumber 14)
+(inGameNumber 15)
+(inGameNumber 16)
+(inGameNumber 17)
+(inGameNumber 18)
+(inGameNumber 19)
+(inGameNumber 20)
+(inGameNumber 21)
+(inGameNumber 22)
+(inGameNumber 23)
+(inGameNumber 24)
+
+(number 0)
+(number 1)
+(number 2)
+(number 3)
+(number 4)
+(number 5)
+(number 6)
+(number 7)
+(number 8)
+(number 9)
+(number 10)
+(number 11)
+(number 12)
+(number 13)
+(number 14)
+(number 15)
+(number 16)
+(number 17)
+(number 18)
+(number 19)
+(number 20)
+(number 21)
+(number 22)
+(number 23)
+(number 24)
+(number 25)
+(number 26)
+(number 27)
+(number 28)
+(number 29)
+(number 30)
+(number 31)
+(number 32)
+(number 33)
+(number 34)
+(number 35)
+(number 36)
+(number 37)
+(number 38)
+(number 39)
+(number 40)
+(number 41)
+(number 42)
+(number 43)
+(number 44)
+(number 45)
+(number 46)
+(number 47)
+(number 48)
+(number 49)
+(number 50)
+
+
+; 定义自然数序
+
+(succ  0  1)
+(succ  1  2) (succ  2  3) (succ  3  4) (succ  4  5) (succ  5  6) 
+(succ  6  7) (succ  7  8) (succ  8  9) (succ  9 10) (succ 10 11)
+(succ 11 12) (succ 12 13) (succ 13 14) (succ 14 15) (succ 15 16)
+(succ 16 17) (succ 17 18) (succ 18 19) (succ 19 20) (succ 20 21)
+(succ 21 22) (succ 22 23) (succ 23 24) (succ 24 25) (succ 25 26)
+(succ 26 27) (succ 27 28) (succ 28 29) (succ 29 30) (succ 30 31)
+(succ 31 32) (succ 32 33) (succ 33 34) (succ 34 35) (succ 35 36)
+(succ 36 37) (succ 37 38) (succ 38 39) (succ 39 40) (succ 40 41)
+(succ 41 42) (succ 42 43) (succ 43 44) (succ 44 45) (succ 45 46)
+(succ 46 47) (succ 47 48) (succ 48 49) (succ 49 50)
+
+; 基础加减法和大小判断
+
+; +
+
+(<= (add ?x 0 ?x)
+    (number ?x))
+(<= (add ?x ?y ?z)
+    (succ ?x ?x1)
+    (succ ?y1 ?y)
+    (add ?x1 ?y1 ?z))
+
+; -
+
+(<= (subtract ?x 0 ?x)
+    (number ?x))
+(<= (subtract ?x ?y ?z)
+    (succ ?x1 ?x)
+    (succ ?y1 ?y)
+    (subtract ?x1 ?y1 ?z))
+
+; <
+(<= (less ?x ?y)
+    (succ ?x ?y))
+(<= (less ?x ?y)
+    (succ ?y1 ?y)
+    (less ?x ?y1))
+
+; <=
+(<= (le 0 ?x)
+    (number ?x))
+(<= (le ?x 50)
+    (number ?x))
+(<= (le ?x ?x)
+    (number ?x))
+(<= (le ?x ?y)
+    (succ ?y1 ?y)
+    (le ?x ?y1))
+
+; 绝对相减
+(<= (absSubtract ?x ?y ?z)
+    (less ?x ?y)
+    (subtract ?y ?x ?z))
+(<= (absSubtract ?x ?y ?z)
+    (le ?y ?x)
+    (subtract ?x ?y ?z))
